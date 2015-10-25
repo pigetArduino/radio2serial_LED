@@ -32,7 +32,7 @@
 #include <FastLED.h>
 
 //INFO
-const float VER = 0.55; 
+const float VER = 0.56; 
 
 //Leds
 const int DATA_PIN = 4; //Neo Pixel RGB led
@@ -54,7 +54,7 @@ const int RADIOHEAD_LATENCY_CORRECTION = 50;
 void setup() {
   //Serial Setup
   Serial.begin(115200);
-  Serial.setTimeout(200);
+  Serial.setTimeout(100);
   Serial.println("{\"ret\":\"Init\"}");
   Serial.println("{\"ret\":\"Test Radio\"}");
   setupLed();
