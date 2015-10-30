@@ -5,4 +5,12 @@ Model for radio2serial with neopixel led
 
 @TODO ADD PHOTO
 
-DO NOT PRINT UNFINISHED PROTOTYPE
+DO NOT PRINT UNFINISHED PROTOTYPE (Now tested)
+
+- TODO
+* You need to file the upper part to make it close properly
+* The upper part will open if the case is dropped
+* Receiver / arduino nano need stall to be hold in place
+* Transmitter hole is too small and need to be file to properly enter
+
+
