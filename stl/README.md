@@ -1,11 +1,11 @@
 # 3D model Alpha V0.1
 
-Model for radio2serial with neopixel led   
+Model for radio2serial  
 ````By Sarrailh Olivier````
 
 @TODO ADD PHOTO
 
-DO NOT PRINT UNFINISHED PROTOTYPE (Now tested)
+DO NOT PRINT UNFINISHED PROTOTYPE
 
 - TODO
 * You need to file the upper part to make it close properly

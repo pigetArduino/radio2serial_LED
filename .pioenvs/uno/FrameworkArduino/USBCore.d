@@ -9,4 +9,5 @@
  .pioenvs/uno/FrameworkArduino/Stream.h \
  .pioenvs/uno/FrameworkArduino/Print.h \
  .pioenvs/uno/FrameworkArduino/Printable.h \
- .pioenvs/uno/FrameworkArduinoVariant/pins_arduino.h
+ .pioenvs/uno/FrameworkArduinoVariant/pins_arduino.h \
+ .pioenvs/uno/FrameworkArduino/PluggableUSB.h

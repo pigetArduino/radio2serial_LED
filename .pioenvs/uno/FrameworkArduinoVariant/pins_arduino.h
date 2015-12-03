@@ -235,4 +235,7 @@ const uint8_t PROGMEM digital_pin_to_timer_PGM[] = {
 #define SERIAL_PORT_MONITOR   Serial
 #define SERIAL_PORT_HARDWARE  Serial
 
-#endif
+#endif 
+
+#undef NUM_ANALOG_INPUTS
+#define NUM_ANALOG_INPUTS           8

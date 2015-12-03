@@ -1,106 +1,138 @@
 //radio2serial.ino
-//version: 0.55
-//github url: http://smarturl.it/radio2serial
+// By Rémi Sarrailh
+// MIT licence
+// version: 0.6
+
+// Get this program / update at: http://smarturl.it/radio2serial
 //
-//Commands are sent with a REST syntax (ex: /radio/text/Hello World)
-//Data are sent in JSON (ex: "{"data" : "/radio/text/Hello World"}")
-//Protocols managed: RemoteTransmitter (old)/NewRemoteTransmitter (new)/RadioHead (text)
+// Commands are sent with a REST syntax (ex: /radio/text/Hello World)
+// Data are received in JSON (ex: "{"data" : "/radio/text/Hello World"}")
+// Protocols managed: RemoteTransmitter (old)/NewRemoteTransmitter (new)/RadioHead (text)
+
+// /radio/new/1234/1/on : turn on new radio "address:1234 unit:1" 
+// /radio/new/1234/0/off : turn off new radio "address:1234 unit:0"
+// /radio/new/1234/2/8 : dim new radio to 8/16 "address:1234 unit:2"
+
+// /radio/old/123456 : send old radio code "123456"
+
+// /radio/text/Hello world : send RadioHead code "Hello world"
+
+// Status (on startup)
+// Led blink fast : check receiver
+// Led blink slow : check transmitter
+// (on text send)
+// Led blink : Text too long
+//
+// Arduino system will always be off if everything works correctly 
+
+
 
 // Library
-// RadioHead : http://www.airspayce.com/mikem/arduino/RadioHead/
-// 433mhzforarduino : https://bitbucket.org/fuzzillogic/433mhzforarduino/
-// FastLed : http://fastled.io/
+// RadioHead by Airspayce.com : http://www.airspayce.com/mikem/arduino/RadioHead/
+// 433mhzforarduino by Fuzzilogic : https://bitbucket.org/fuzzillogic/433mhzforarduino/
 
 //PinOut
 //ASK 433Mhz Transmitter                : 10
 //ASK 433Mhz Receiver (RXB6 recommanded): 2
-//Neopixel (WS2812b)                    : 4
 
 //Radio
-//Radio Switches
+//433MhzforArduino Libraries (Switchs)
 #include <NewRemoteTransmitter.h>
 #include <RemoteTransmitter.h>
 #include <RemoteReceiver.h>
 #include <NewRemoteReceiver.h>
 #include <InterruptChain.h>
 
-//RadioHead
+//RadioHead Libraries (Text message)
 #include <RH_ASK.h>
 #include <SPI.h> // Not actualy used but needed to compile
 
+/* 
+ *  
+ *  Setup 
+*/ 
+
+//Version
+const float VER = 0.60; 
+
 //Led
-#include <FastLED.h>
-
-//INFO
-const float VER = 0.56; 
-
-//Leds
-const int DATA_PIN = 4; //Neo Pixel RGB led
-const int NUM_LEDS = 1;
-CRGB leds[NUM_LEDS];
+const int statusLedPin = 13;
+const int NbledBlink = 20; //Number of times led blink
 
 //Radio
-const int txPin = 10;
-const int rxPin = 2; //Interrupt 0 ==> Pin 2
-const int REPEATS = 2;
-const int BITRATE_RADIOHEAD = 2000;
-boolean txStatus = false;
+const int txPin = 10; //Transmitter (You can change where it is plugged)
+const int rxPin = 2; //Receiver (We need to use Interrupt 0 ==> Pin 2)
+
+const int REPEATS = 2; //Repeats for /radio/new and /radio/old
+const int BITRATE_RADIOHEAD = 2000; //RadioHead bitrate
+
+boolean txStatus = false; 
 boolean rxStatus = false;
 
-const int statusLedPin = 13;
+//Radio Head
 RH_ASK driver(BITRATE_RADIOHEAD, rxPin, txPin, statusLedPin, false);
+//RadioHead add latency which alter periods on 433mhzforarduino
+//We compensate it by reducing periods when we send a text message
 const int RADIOHEAD_LATENCY_CORRECTION = 50;
 
-void setup() {
+//Setup led/serial/radio
+void setup() { 
+  //Setup status LED
+  pinMode(statusLedPin,OUTPUT);
+  
   //Serial Setup
   Serial.begin(115200);
   Serial.setTimeout(100);
   Serial.println("{\"ret\":\"Init\"}");
   Serial.println("{\"ret\":\"Test Radio\"}");
-  setupLed();
-  setupRadio();
-  sendInfo();
-
+  
+  setupRadio(); // Setup Radio
+  sendInfo(); //Display status for this program
 }
 
+//Wait for serial input
 void loop() {
-  checkCommand();
+  checkCommand(); 
 }
 
-/*
-
-Main Functions
-
+/* 
+ *  
+ *  
+Serial 
 */
 
-
-//Check if a command is valid
+//Check if a command sent on serial is valid and sent it with radio
 void checkCommand() {
+
+  //If a message is sent in serial
   if (Serial.available() > 0)
   {
-    //TODO: improve command checking by avoiding String variable
+    //We assume command will be end by an new string (\n)
     String line = Serial.readStringUntil('\n');
-    String command = getValue(line, '/', 1);
+    //We explode the string and get first string inside  /string/.../..../...
+    String command = getValue(line, '/', 1); 
+    
+    //If no command is supplied display help
     if (command == "") {
-      Serial.println("{\"err\":\"INVALID COMMAND - /info,/radio,/led\"}");
-    }
-    else
-    {
+      Serial.println("{\"err\":\"INVALID COMMAND - /info,/radio\"}");
+    } else {
+      //If /radio/.../.../....
       if (command == "radio") {
         String radioType = getValue(line, '/', 2);
         if (radioType == "old") {
-          sendOld434(line);
+          sendOld434(line); //code switch
         }
         else if (radioType == "new") {
-          sendNew434(line);
+          sendNew434(line); //self learning switch
         }
         else if (radioType == "text") {
-          sendText434(line);
-        }
-        else {
+          sendText434(line); //radioHead message
+        } else {
+          //If no valid protocol found display help 
           Serial.println("{\"err\":\"INVALID PROTOCOL - /radio/old,/radio/new,/radio/text\"}");
         }
       }
+      // If /info display information
       else if (command == "info") {
         sendInfo();
       }
@@ -108,7 +140,8 @@ void checkCommand() {
   }
 }
 
-//Send information on the Arduino
+//Display arduino code filename, url, version, wiring (tx,rx) and status (tx,rx)
+//Can be display again by typing /info
 void sendInfo() {
   Serial.print("{\"file\":\"radio2serial.ino\",\"url\":\"smarturl.it/radio2serial\",\"ver\":\"");
   Serial.print(VER);
@@ -116,8 +149,6 @@ void sendInfo() {
   Serial.print(txPin);
   Serial.print(";rx:");
   Serial.print(rxPin);
-  Serial.print(";led:");
-  Serial.print(DATA_PIN);
   Serial.print("\",\"state\":\"tx:");
   Serial.print(txStatus);
   Serial.print(";rx:");
@@ -126,9 +157,8 @@ void sendInfo() {
 }
 
 
-//Equivalent of explode in PHP
-String getValue(String data, char separator, int index)
-{
+//Equivalent of explode in PHP (use for serial commands parsing)
+String getValue(String data, char separator, int index){
   int found = 0;
   int strIndex[] = {0, -1};
   int maxIndex = data.length() - 1;
@@ -144,87 +174,93 @@ String getValue(String data, char separator, int index)
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
-/*
-
-
-
-RADIO
-
-
+/*  
+ *   
+ *   
+Setup and Check Radio   
 */
 
-/*
-Setup Radio
-*/
+//Setup Radio Reception and Transmission
 void setupRadio(){
-  //Radio Switch SETUP
+  //Check reception
   checkRxRadio();
-  RemoteReceiver::init(-1, REPEATS, showOld434);
-  NewRemoteReceiver::init(-1, REPEATS, showNew434);
-  InterruptChain::setMode(0, CHANGE);
+  
+  //Receive 433mhzforArduino
+  RemoteReceiver::init(-1, REPEATS, showOld434); //Receive old switches codes
+  NewRemoteReceiver::init(-1, REPEATS, showNew434); //Receive new switches codes
+  InterruptChain::setMode(0, CHANGE); //Use Interupt chains to chain Receiver
   InterruptChain::addInterruptCallback(0, RemoteReceiver::interruptHandler);
   InterruptChain::addInterruptCallback(0, NewRemoteReceiver::interruptHandler);
-  InterruptChain::addInterruptCallback(0, showVW434);
-  //RadioHead Text SETUP
+  InterruptChain::addInterruptCallback(0, showText434);
+
+  //Receive RadioHead message 
   driver.init();
-  if (rxStatus) {
+
+  //If reception works we try to send and receive /radio/new/1234/on
+  if (rxStatus) { 
   checkTxRadio(); 
-}
+  }
 }
 
-/*
-Check Radio
-*/
-
+//we check if rxPin is plugged.
+//If digitalRead change from HIGH to LOW multiples times
+//We assume the receiver is plugged.
 void checkRxRadio() {
   int testRadioHigh = 0;
   int testRadioLow = 0;
+  
+  //We check what rxPin received 64 times. 
   for (int i = 0; i < 64; i++) {
     if (digitalRead(rxPin)) {
       testRadioHigh++;
+      
     }
     else
     {
       testRadioLow++;
     }
+    //Serial.print(digitalRead(rxPin));
     delay(25);
   }
 
-  if (testRadioLow == 128) {
+  //If we have only received LOW, display error and blink led fast
+  if (testRadioLow == 64) {
     rxStatus = false;
     Serial.println("{\"err\":\"Rx not plugged\"}");
-    leds[0] = CRGB::Yellow;
+    blinkLed(50);
 
-  }
-  else
-  {
-    rxStatus = true;
+  } else {
+    rxStatus = true; //If not put rxStatus to true.
   }
 
 }
 
-void checkTxRadio() {
+//To check the transmitter, we send a radiocode and
+//see if we have received it
+void checkTxRadio() { 
   sendNew434("/radio/new/1234/0/off");
-  if (!txStatus) {
+
+  //If we haven't receive radio code, display error and blink led slow
+  if (!txStatus) { //If we haven't receive radio code
       Serial.println("{\"err\":\"Tx not plugged\"}");
-      leds[0] = CRGB::Red;
-      FastLED.show();
+      blinkLed(300);
   }
 }
 
 
-
-
-
-/*
-Display Radio codes
+/* 
+ *  
+ *  
+Receive radio 
 */
 
 //Show 434 code with no self-learn code
+// /radio/old/code/(period)
 void showOld434(unsigned long receivedCode, unsigned int period) {
   Serial.print("{\"data\" : \"/radio/old/");
   Serial.print(receivedCode);
- 
+
+  //If period is not between 400 and 500 we display it
   if(period < 400 || period > 500){
   Serial.print("/");
   Serial.print(period);
@@ -233,8 +269,9 @@ void showOld434(unsigned long receivedCode, unsigned int period) {
   Serial.println("\"}");
 }
 
+
 //Show 434 code with self-learn code
-// /new434/address/id/level/(period)
+// /radio/new/address/id/level/(period)
 void showNew434(NewRemoteCode receivedCode) {
   // Print the received code.
   Serial.print("{\"data\" : \"/radio/new/");
@@ -243,6 +280,7 @@ void showNew434(NewRemoteCode receivedCode) {
   Serial.print(receivedCode.unit);
   Serial.print("/");
 
+  // Display status (on/off/dim)
   switch (receivedCode.switchType) {
     case NewRemoteCode::off:
       Serial.print("off");
@@ -254,60 +292,78 @@ void showNew434(NewRemoteCode receivedCode) {
       Serial.print(receivedCode.dimLevel);
       break;
   }
+  
+  //If period is not between 190 and 310 we display it
   if(receivedCode.period < 190 || receivedCode.period > 310){
   Serial.print("/");
   Serial.print(receivedCode.period);
   }
   Serial.println("\"}");
 
+  //If a test code (/radio/new/1234) is received we assume
+  //transmission works correctly.
   if (receivedCode.address == 1234) {
     txStatus = true;
   }
 
 }
 
-void showVW434() {
+//show 434 radioHead message
+// /radio/text/string
+void showText434() {
 
-  uint8_t buf[RH_ASK_MAX_MESSAGE_LEN];
+  //Create buffer to receive text message
+  uint8_t buf[RH_ASK_MAX_MESSAGE_LEN]; 
   uint8_t buflen = sizeof(buf);
 
-  if (driver.recv(buf, &buflen)) // Non-blocking
+  if (driver.recv(buf, &buflen)) // Non-blocking Reception
   {
-    char* radiocode;
-    buf[buflen] = '\0';
-    radiocode = (char *)buf;
+    char* radiocode; //Create array of char 
+    buf[buflen] = '\0'; //Add a end of string to buffer
+    radiocode = (char *)buf; //Get uint buffer to array of char
     Serial.print("{\"data\" : \"/radio/text/");
-    Serial.print(radiocode);
+    Serial.print(radiocode); //Display text message
     Serial.println("\"}");
   }
 }
 
-/*
-Send radio code
+/*  
+ *  
+ *  
+ * Send radio 
 */
 
 //Send a text with Radiohead /radio/text/Hello world
 void sendText434(String line) {
+
+  //Get text inside a string
   String code = getValue(line, '/', 3);
+
+  //Convert string to char array
   char msg[code.length() + 1];
   //Serial.println(code.length());
+
+  //If message is inferior to 60 characters
   if(code.length() < 60){
+  
+  //Convert string to char array
   code.toCharArray(msg, code.length() + 1);
+  
+  //Convert char array to uint8_t and send it
   driver.send((uint8_t *)msg, strlen(msg));
-  //driver.send((uint8_t *)msg, strlen(msg));
   driver.waitPacketSent();
+
+  //Show what has been sent
   Serial.print("{\"data\" : \"/radio/text/");
   Serial.print(msg);
   Serial.println("\"}");
   Serial.println("{\"ret\":\"/radio/OK\"}");
-  blinkLed(CRGB::Yellow);
+  digitalWrite(statusLedPin,LOW); //Reset status (if text was previously too long)
 
-  }
-  else
-  {
+  } else { //if text > 60 characters
   Serial.println("{\"err\":\"Text too long\"}");
-  leds[0] = CRGB::Blue;
-  FastLED.show();
+  blinkLed(100); //Blink led if text is too long
+  
   }
   
 }
@@ -378,65 +434,26 @@ void sendNew434(String line) {
   }
 
   Serial.println("{\"ret\":\"/radio/OK\"}");
-  blinkLed(CRGB::Green);
   //Serial.println(address);
   //Serial.println(id);
   //Serial.println(level);
   //Serial.println(period);
 }
 
-/*
-
-
-
-
-Neo Pixel Led 
-
-
-
+/* 
+ *  
+ *  
+Led 
 */
 
-
-void setupLed(){
- //Led setup
-  FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
-  blinkLed(CRGB::Yellow);
-}
-
-void controlLed(String line) {
-  String color = getValue(line, '/', 2);
-  if (color == "red") {
-    blinkLed(CRGB::Red);
-  }
-  else if (color == "green") {
-    blinkLed(CRGB::Green);
-  }
-  else if (color == "blue") {
-    blinkLed(CRGB::Blue);
-  }
-  else if (color == "white") {
-    blinkLed(CRGB::White);
-  }
-  else if (color == "off") {
-    blinkLed(CRGB::Black);
-  }
-  else {
-    Serial.println("{\"err\":\"INVALID COLOR : red,green,white,off\"}");
-  }
-}
-
-void blinkLed(const CRGB& color) {
+//Blink system led if something goes wrong and stay light up.
+void blinkLed(int speed) {
   // Turn the LED on, then pause
-  for (int i = 0; i <= 2; i++) {
-    leds[0] = color;
-    FastLED.show();
-    delay(50);
-    // Now turn the LED off, then pause
-    leds[0] = CRGB::Black;
-    FastLED.show();
-    delay(50);
+  for (int i = 0; i <= NbledBlink; i++) {
+    digitalWrite(statusLedPin,HIGH);
+    delay(speed);
+    digitalWrite(statusLedPin,LOW);
+    delay(speed);
   }
+  digitalWrite(statusLedPin,HIGH);
 }
-
-
-
